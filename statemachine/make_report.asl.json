@@ -1,0 +1,16 @@
+{
+  "Comment": "StateMachine of Make Report Tasks",
+  "StartAt": "Make Report Html",
+  "States": {
+    "Make Report Html": {
+      "Type": "Task",
+      "Resource": "${MakeReportFunctionArn}",
+      "Next": "Convert Html to Pdf"
+    },
+    "Convert Html to Pdf": {
+      "Type": "Task",
+      "Resource": "${HtmlToPdfFunctionArn}",
+      "End": true
+    }
+  }
+}

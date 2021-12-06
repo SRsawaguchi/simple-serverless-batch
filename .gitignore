@@ -347,3 +347,9 @@ $RECYCLE.BIN/
 
 # about simple-serverless-batch
 docker
+
+samconfig.toml
+# samconfig.tomlは通常の開発ではコミットしてください。
+# 今回のハンズオンでは、以下の理由によりコミットに加えません。
+#     - アップロード先のS3バケットの設定が含まれるため。(アップロード先のS3バケットは読者により異なる設定が必要なため、samconfig.tomlを含めることで混乱が生じる可能性があるため。)
+#     - `sam deploy --guided`により自動生成するため。

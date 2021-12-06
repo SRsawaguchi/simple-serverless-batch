@@ -125,6 +125,60 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 
+  StatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogDelivery"
+                  - "logs:GetLogDelivery"
+                  - "logs:UpdateLogDelivery"
+                  - "logs:DeleteLogDelivery"
+                  - "logs:ListLogDeliveries"
+                  - "logs:PutResourcePolicy"
+                  - "logs:DescribeResourcePolicies"
+                  - "logs:DescribeLogGroups"
+                Resource: "*"
+
+  CallStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: events.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: InvokeStepFunction
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "states:StartExecution"
+                Resource: !GetAtt MakeReportStateMachine.Arn
+
   #################
   #  Lambda Layer #
   #################
@@ -167,3 +221,46 @@ Resources:
           SSB_S3_ENDPOINT: !Ref S3Endpoint 
           SSB_WKHTMLTOPDF_PATH: /opt/bin/wkhtmltopdf
       Role: !GetAtt HtmlToPdfFunctionRole.Arn
+
+  ##############
+  #  Log Group #
+  ##############
+  MakeReportStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: "simple-serverless-batch"
+      RetentionInDays: 60
+
+  ###################
+  #  State Machine  #
+  ###################
+  MakeReportStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: statemachine/make_report.asl.json
+      DefinitionSubstitutions:
+        MakeReportFunctionArn: !GetAtt MakeReportFunction.Arn
+        HtmlToPdfFunctionArn: !GetAtt HtmlToPdfFunction.Arn
+      Logging:
+        Level: "ERROR"
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup: 
+              LogGroupArn: !GetAtt MakeReportStateMachineLogGroup.Arn
+      Role: !GetAtt StatesExecutionRole.Arn
+
+  ##################
+  #  Event Bridge  #
+  ##################
+  CallStateMachine:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: "CallMakeReportStateMachine"
+      Description: "Event for call MakeReportStateMachine(StepFunctions)."
+      ScheduleExpression: cron(0 10 ? * MON-FRI *)
+      State: ENABLED
+      Targets: 
+        -
+          Arn: !GetAtt MakeReportStateMachine.Arn
+          RoleArn: !GetAtt CallStateMachineRole.Arn
+          Id: CallStateMachine

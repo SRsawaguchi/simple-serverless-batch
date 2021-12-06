@@ -32,6 +32,18 @@ services:
       timeout: 20s
       retries: 3
 
+  stepfn:
+    image: amazon/aws-stepfunctions-local:latest
+    hostname: stepfn
+    depends_on:
+      - dynamodb
+      - minio
+    ports:
+      - "8083:8083"
+    environment:
+      LAMBDA_ENDPOINT: http://host.docker.internal:3001
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+
 networks:
   ssb-handson:
     external: true
