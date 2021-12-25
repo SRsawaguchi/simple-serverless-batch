@@ -1,8 +1,11 @@
 import os
 import tempfile
 
-import boto3
 import pdfkit
+
+from storage.minio import Minio
+from storage.s3 import S3
+from storage.storage import Storage
 
 
 class Config:
@@ -24,30 +27,9 @@ class Config:
         self.wkhtmltopdf_path = self.or_none(wkhtmltopdf_path)
 
 
-def download_file(bucket_name, object_name, dist_dir, **kwargs):
-    s3 = boto3.resource("s3", **kwargs)
-    bucket = s3.Bucket(bucket_name)
-    object_path = os.path.join(dist_dir, os.path.basename(object_name))
-    bucket.download_file(object_name, object_path)
-    return object_path
+def html_to_pdf(storage: Storage, object_name, out_dir, config: Config):
+    html_path = storage.download_file(object_name, out_dir)
 
-
-def upload_file(bucket_name, file_path, object_name, **kwargs):
-    s3 = boto3.resource("s3", **kwargs)
-    bucket = s3.Bucket(bucket_name)
-    bucket.upload_file(file_path, object_name)
-    return object_name
-
-
-def html_to_pdf(bucket_name, object_name, out_dir, config: Config):
-    html_path = download_file(
-        bucket_name,
-        object_name,
-        out_dir,
-        endpoint_url=config.s3_endpoint,
-        aws_access_key_id=config.minio_user,
-        aws_secret_access_key=config.minio_password,
-    )
     pdf_path = os.path.join(
         out_dir, os.path.splitext(os.path.basename(object_name))[0] + ".pdf"
     )
@@ -61,15 +43,20 @@ def html_to_pdf(bucket_name, object_name, out_dir, config: Config):
         pdfkit_config = pdfkit.configuration(wkhtmltopdf=config.wkhtmltopdf_path)
     pdfkit.from_file(html_path, pdf_path, options=options, configuration=pdfkit_config)
 
-    pdf_object_name = upload_file(
-        bucket_name,
-        pdf_path,
-        os.path.basename(pdf_path),
-        endpoint_url=config.s3_endpoint,
-        aws_access_key_id=config.minio_user,
-        aws_secret_access_key=config.minio_password,
-    )
+    pdf_object_name = storage.upload_file(pdf_path, os.path.basename(pdf_path))
     return pdf_object_name
+
+
+def get_storage(config: Config, bucket_name: str) -> Storage:
+    if config.s3_endpoint == "":
+        return S3(config.bucket_name)
+    else:
+        return Minio(
+            bucket_name,
+            endpoint_url=config.s3_endpoint,
+            access_key_id=config.minio_user,
+            secret_access_key=config.minio_password,
+        )
 
 
 def lambda_handler(event, context):
@@ -79,11 +66,13 @@ def lambda_handler(event, context):
         minio_password=os.environ.get("SSB_MINIO_PASSWORD"),
         wkhtmltopdf_path=os.environ.get("SSB_WKHTMLTOPDF_PATH"),
     )
+
     bucket_name = event["BucketName"]
     html_object_name = event["ObjectName"]
+    storage = get_storage(config, bucket_name)
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        pdf_object_name = html_to_pdf(bucket_name, html_object_name, temp_dir, config)
+        pdf_object_name = html_to_pdf(storage, html_object_name, temp_dir, config)
         return {
             "BucketName": bucket_name,
             "ObjectName": pdf_object_name,
