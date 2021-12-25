@@ -182,6 +182,16 @@ Resources:
   #################
   #  Lambda Layer #
   #################
+  PythonCommonModuleLambdaLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      Description: "Original common library of this app."
+      ContentUri: functions/layer/python
+      CompatibleRuntimes:
+        - python3.8
+    Metadata:
+      BuildMethod: python3.8
+
   WkhtmltopdfLambdaLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -196,6 +206,8 @@ Resources:
     Properties:
       CodeUri: functions/make_report/
       Handler: app.lambda_handler
+      Layers:
+        - !Ref PythonCommonModuleLambdaLayer
       Environment:
         Variables:
           SSB_BUCKET_NAME: !Ref S3BucketName
@@ -213,6 +225,7 @@ Resources:
       Handler: app.lambda_handler
       Layers:
         - !Ref WkhtmltopdfLambdaLayer
+        - !Ref PythonCommonModuleLambdaLayer
       Environment:
         Variables:
           FONTCONFIG_PATH: /var/task/assets/fonts
